@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { TOWERMIND_SYSTEM_PROMPT } from "../knowledge";
 
 const OPENCLAW_URL = process.env.OPENCLAW_URL || "http://204.168.142.104:18789";
 const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "";
@@ -6,6 +7,12 @@ const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "";
 export async function POST(req: NextRequest) {
   try {
     const { messages } = await req.json();
+
+    // Prepend knowledge base system message
+    const enrichedMessages = [
+      { role: "system", content: TOWERMIND_SYSTEM_PROMPT },
+      ...messages,
+    ];
 
     const response = await fetch(`${OPENCLAW_URL}/v1/chat/completions`, {
       method: "POST",
@@ -16,7 +23,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         model: "openclaw",
-        messages,
+        messages: enrichedMessages,
         user: "towermind-voice",
       }),
     });

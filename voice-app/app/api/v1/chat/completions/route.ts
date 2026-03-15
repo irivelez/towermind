@@ -1,13 +1,24 @@
 import { NextRequest } from "next/server";
+import { TOWERMIND_SYSTEM_PROMPT } from "../../../knowledge";
 
 const OPENCLAW_URL = process.env.OPENCLAW_URL || "http://204.168.142.104:18789";
 const OPENCLAW_TOKEN = process.env.OPENCLAW_TOKEN || "";
 
 // OpenAI-compatible proxy for ElevenLabs Custom LLM → OpenClaw
-// ElevenLabs sends standard OpenAI chat completions format with streaming
+// Injects TowerMind knowledge base as system context
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
+
+    // Prepend knowledge base system message if not already present
+    const messages = Array.isArray(body.messages) ? [...body.messages] : [];
+    const hasSystemContext = messages.some(
+      (m: { role: string; content: string }) =>
+        m.role === "system" && m.content.includes("TowerMind")
+    );
+    if (!hasSystemContext) {
+      messages.unshift({ role: "system", content: TOWERMIND_SYSTEM_PROMPT });
+    }
 
     const response = await fetch(`${OPENCLAW_URL}/v1/chat/completions`, {
       method: "POST",
@@ -18,6 +29,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         ...body,
+        messages,
         model: "openclaw",
         user: "towermind-elevenlabs",
         stream: body.stream ?? false,

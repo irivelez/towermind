@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>servo_controller</name>
+  <version>0.1.0</version>
+  <description>Controls 4 servos via PCA9685 I2C controller</description>
+  <maintainer email="robot@local">robot</maintainer>
+  <license>MIT</license>
+  <depend>rclpy</depend>
+  <depend>std_msgs</depend>
+  <build_type>ament_python</build_type>
+</package>

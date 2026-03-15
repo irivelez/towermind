@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  robot:
+    build: .
+    container_name: robot_ros2
+    network_mode: host
+    privileged: true                  # needed for GPIO/I2C/cameras
+    volumes:
+      - ./src:/robot_ws/src           # live code editing
+      - /dev:/dev                     # access to cameras and I2C
+    devices:
+      - /dev/video0:/dev/video0       # camera 1
+      - /dev/video4:/dev/video4       # camera 2
+      - /dev/i2c-1:/dev/i2c-1        # PCA9685 via I2C
+    environment:
+      - ROS_DOMAIN_ID=0
+    stdin_open: true
+    tty: true
+    command: bash

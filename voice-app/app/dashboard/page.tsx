@@ -10,6 +10,7 @@ interface Stats {
   totalDuration: number;
   avgDuration: number;
   totalMessages: number;
+  meaningfulQuestions: number;
 }
 
 interface TimelineEntry {
@@ -21,12 +22,19 @@ interface TimelineEntry {
   userQuestions: string[];
 }
 
+interface RankedTheme {
+  theme: string;
+  questions: string[];
+  count: number;
+}
+
 interface InsightsData {
   stats: Stats;
   floorMentions: Record<string, number>;
   summaries: string[];
   timeline: TimelineEntry[];
-  userMessages: string[];
+  rankedThemes: RankedTheme[];
+  topQuestions: string[];
 }
 
 function formatTime(unix: number): string {
@@ -43,10 +51,21 @@ function formatDuration(secs: number): string {
 }
 
 const FLOOR_COLORS: Record<string, string> = {
-  "Floor 2": "var(--violet)", "Floor 3": "var(--blue)", "Floor 4": "var(--cyan)",
-  "Floor 6": "var(--rose)", "Floor 7": "var(--amber)", "Floor 8": "var(--emerald)",
-  "Floor 9": "var(--violet)", "Floor 11": "var(--blue)", "Floor 12": "var(--cyan)",
-  "Floor 14": "var(--emerald)",
+  "Floor 2": "var(--violet)", "Floor 4": "var(--cyan)", "Floor 6": "var(--rose)",
+  "Floor 7": "var(--amber)", "Floor 8": "var(--emerald)", "Floor 9": "var(--violet)",
+  "Floor 11": "var(--blue)", "Floor 12": "var(--cyan)", "Floor 14": "var(--emerald)",
+};
+
+const THEME_COLORS: Record<string, { bg: string; color: string }> = {
+  "Wayfinding": { bg: "var(--cyan-dim)", color: "var(--cyan-light)" },
+  "Events & Schedule": { bg: "var(--amber-dim)", color: "var(--amber-light)" },
+  "People & Networking": { bg: "var(--violet-dim)", color: "var(--violet-light)" },
+  "Hackathon": { bg: "var(--rose-dim)", color: "var(--rose-light)" },
+  "Building & Membership": { bg: "var(--blue-dim)", color: "var(--blue-light)" },
+  "Food & Logistics": { bg: "var(--emerald-dim)", color: "var(--emerald-light)" },
+  "Tech & Demos": { bg: "var(--cyan-dim)", color: "var(--cyan-light)" },
+  "Tips & Recommendations": { bg: "var(--amber-dim)", color: "var(--amber-light)" },
+  "General": { bg: "var(--violet-dim)", color: "var(--violet-light)" },
 };
 
 function getFloorColor(floor: string): string {
@@ -61,6 +80,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null);
+  const [expandedTheme, setExpandedTheme] = useState<string | null>(null);
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
@@ -113,14 +133,6 @@ export default function Dashboard() {
   const successRate = data.stats.totalConversations > 0
     ? Math.round((data.stats.successfulCount / data.stats.totalConversations) * 100) : 0;
 
-  const stats = [
-    { value: String(data.stats.totalConversations), label: "CONVERSATIONS", sub: `${successRate}% success`, gradient: true },
-    { value: formatDuration(data.stats.totalDuration), label: "TALK TIME", sub: "cumulative", gradient: false },
-    { value: `${data.stats.avgDuration || 0}s`, label: "AVG DURATION", sub: "per session", gradient: false },
-    { value: String(data.stats.totalMessages), label: "MESSAGES", sub: "exchanged", gradient: false },
-    { value: String(data.userMessages.length), label: "QUESTIONS", sub: "from visitors", gradient: false },
-  ];
-
   return (
     <div className="noise grid-bg relative min-h-svh flex flex-col">
       <div className="scan-line" />
@@ -128,9 +140,7 @@ export default function Dashboard() {
       {/* NAV */}
       <nav className="nav-glass sticky top-0 z-30 flex items-center justify-between px-5 py-3 md:px-8">
         <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="font-[var(--font-mono)]"
+          <Link href="/" className="font-[var(--font-mono)]"
             style={{ fontSize: 13, color: "var(--text-3)", textDecoration: "none", letterSpacing: "0.06em", transition: "color 0.15s ease" }}
             onMouseEnter={(e) => { e.currentTarget.style.color = "var(--violet-light)"; e.currentTarget.style.textDecoration = "underline"; }}
             onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-3)"; e.currentTarget.style.textDecoration = "none"; }}
@@ -160,97 +170,122 @@ export default function Dashboard() {
         {/* HEADER */}
         <div className="anim-location">
           <p className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.2em", marginBottom: 24 }}>
-            REAL-TIME ANALYTICS · FRONTIER TOWER
+            EVENT ORGANIZER INTELLIGENCE · FRONTIER TOWER
           </p>
-          <h1
-            className="font-[var(--font-ui)]"
-            style={{ fontSize: "clamp(28px, 5vw, 48px)", fontWeight: 300, color: "var(--text-1)", lineHeight: 1.1 }}
-          >
-            Conversation Intelligence
+          <h1 className="font-[var(--font-ui)]"
+            style={{ fontSize: "clamp(28px, 5vw, 48px)", fontWeight: 300, color: "var(--text-1)", lineHeight: 1.1 }}>
+            What visitors are asking
           </h1>
-          <p className="font-[var(--font-ui)]" style={{ fontSize: 16, color: "var(--text-2)", lineHeight: 1.7, marginTop: 16, maxWidth: 520 }}>
-            Live insights from TowerMind voice sessions — floor interest, visitor questions, and AI analysis.
+          <p className="font-[var(--font-ui)]" style={{ fontSize: 16, color: "var(--text-2)", lineHeight: 1.7, marginTop: 16, maxWidth: 560 }}>
+            Ranked insights from live voice conversations — noise filtered, themes extracted, questions prioritized for organizer action.
           </p>
         </div>
 
-        {/* STATS BAR */}
+        {/* KEY METRICS */}
         <div
           className="stats-bar anim-name"
-          style={{
-            marginTop: 64,
-            display: "flex",
-            flexDirection: "row",
-            borderTop: "1px solid var(--border-dim)",
-            borderBottom: "1px solid var(--border-dim)",
-          }}
+          style={{ marginTop: 64, display: "flex", flexDirection: "row", borderTop: "1px solid var(--border-dim)", borderBottom: "1px solid var(--border-dim)" }}
         >
-          {stats.map((stat, i, arr) => (
-            <div
-              key={stat.label}
-              style={{
-                flex: 1,
-                padding: "32px 0 32px 24px",
-                borderRight: i < arr.length - 1 ? "1px solid var(--border-dim)" : "none",
-              }}
-            >
-              <p
-                className="font-[var(--font-ui)]"
-                style={{
-                  fontSize: "clamp(24px, 4vw, 40px)",
-                  fontWeight: 300,
-                  lineHeight: 1,
-                  ...(stat.gradient
-                    ? {
-                        background: "linear-gradient(135deg, var(--violet-light), var(--cyan-light))",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                        backgroundClip: "text",
-                      }
-                    : { color: "var(--text-1)" }),
-                }}
-              >
-                {stat.value}
-              </p>
-              <p className="font-[var(--font-mono)]" style={{ fontSize: 10, color: "var(--text-4)", letterSpacing: "0.18em", marginTop: 8 }}>
-                {stat.label}
-              </p>
-              <p className="font-[var(--font-mono)]" style={{ fontSize: 10, color: "var(--text-4)", marginTop: 4 }}>
-                {stat.sub}
-              </p>
+          {[
+            { value: String(data.stats.totalConversations), label: "SESSIONS", gradient: true },
+            { value: String(data.stats.meaningfulQuestions), label: "REAL QUESTIONS", gradient: false },
+            { value: `${successRate}%`, label: "SUCCESS RATE", gradient: false },
+            { value: formatDuration(data.stats.totalDuration), label: "TOTAL TALK TIME", gradient: false },
+          ].map((stat, i, arr) => (
+            <div key={stat.label} style={{ flex: 1, padding: "32px 0 32px 24px", borderRight: i < arr.length - 1 ? "1px solid var(--border-dim)" : "none" }}>
+              <p className="font-[var(--font-ui)]" style={{
+                fontSize: "clamp(24px, 4vw, 40px)", fontWeight: 300, lineHeight: 1,
+                ...(stat.gradient ? { background: "linear-gradient(135deg, var(--violet-light), var(--cyan-light))", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent", backgroundClip: "text" } : { color: "var(--text-1)" }),
+              }}>{stat.value}</p>
+              <p className="font-[var(--font-mono)]" style={{ fontSize: 10, color: "var(--text-4)", letterSpacing: "0.18em", marginTop: 8 }}>{stat.label}</p>
             </div>
           ))}
         </div>
 
-        {/* AI ANALYSIS */}
-        {data.summaries.length > 0 && (
-          <section className="anim-tagline" style={{ marginTop: 64 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <span className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.2em" }}>
-                AI ANALYSIS
-              </span>
-              <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: "var(--amber-dim)", color: "var(--amber-light)" }}>
-                AUTO
-              </span>
-            </div>
-            <div style={{ height: 1, background: "var(--border-dim)", marginBottom: 24 }} />
-            <div className="columns-1 gap-10 md:columns-2">
-              {data.summaries.map((s, i) => (
-                <div key={i} className="mb-6 flex break-inside-avoid gap-4">
-                  <div style={{ width: 3, flexShrink: 0, alignSelf: "stretch", borderRadius: 2, background: "linear-gradient(180deg, var(--violet), var(--cyan), transparent)" }} />
-                  <p className="font-[var(--font-ui)]" style={{ fontSize: 14, lineHeight: 1.8, color: "var(--text-2)" }}>{s}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        {/* RANKED THEMES — what visitors care about most */}
+        <section className="anim-tagline" style={{ marginTop: 64 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+            <span className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.2em" }}>
+              QUESTION THEMES · RANKED
+            </span>
+            <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: "var(--violet-dim)", color: "var(--violet-light)" }}>
+              {data.rankedThemes.length} CATEGORIES
+            </span>
+          </div>
+          <div style={{ height: 1, background: "var(--border-dim)", marginBottom: 24 }} />
 
-        {/* TWO COLUMN GRID */}
+          {data.rankedThemes.length === 0 ? (
+            <p className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", textAlign: "center", padding: "48px 0" }}>
+              NO THEMES DETECTED YET
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {data.rankedThemes.map((t, idx) => {
+                const colors = THEME_COLORS[t.theme] || THEME_COLORS.General;
+                const isExpanded = expandedTheme === t.theme;
+                return (
+                  <div key={t.theme}>
+                    <div
+                      onClick={() => setExpandedTheme(isExpanded ? null : t.theme)}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 16, padding: "16px 20px",
+                        background: idx === 0 ? "var(--surface-1)" : "transparent",
+                        borderRadius: 8, cursor: "pointer", transition: "background 0.15s ease",
+                        ...(idx === 0 ? { boxShadow: "inset 3px 0 0 var(--violet)" } : {}),
+                      }}
+                      onMouseEnter={(e) => { if (idx !== 0) e.currentTarget.style.background = "var(--surface-0)"; }}
+                      onMouseLeave={(e) => { if (idx !== 0) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      {/* Rank */}
+                      <span className="font-[var(--font-mono)]" style={{ fontSize: 20, fontWeight: 700, color: idx === 0 ? "var(--violet-light)" : "var(--text-4)", minWidth: 32 }}>
+                        {String(idx + 1).padStart(2, "0")}
+                      </span>
+                      {/* Theme name */}
+                      <span className="font-[var(--font-ui)]" style={{ fontSize: 15, fontWeight: 500, color: "var(--text-1)", flex: 1 }}>
+                        {t.theme}
+                      </span>
+                      {/* Count badge */}
+                      <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: colors.bg, color: colors.color }}>
+                        {t.count} {t.count === 1 ? "ASK" : "ASKS"}
+                      </span>
+                      {/* Expand arrow */}
+                      <span style={{ color: "var(--text-4)", fontSize: 12, transition: "transform 0.2s ease", transform: isExpanded ? "rotate(90deg)" : "rotate(0)" }}>
+                        ▸
+                      </span>
+                    </div>
+                    <AnimatePresence>
+                      {isExpanded && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.25 }}
+                          className="overflow-hidden"
+                        >
+                          <div style={{ padding: "8px 20px 20px 68px", display: "flex", flexDirection: "column", gap: 6 }}>
+                            {t.questions.map((q, qi) => (
+                              <div key={qi} style={{ padding: "10px 14px", borderRadius: 6, border: "1px solid var(--border-dim)", background: "var(--surface-0)", fontSize: 13, lineHeight: 1.6, color: "var(--text-2)" }}>
+                                <span style={{ color: colors.color, marginRight: 8 }}>&rsaquo;</span>{q}
+                              </div>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* FLOOR DEMAND + AI ANALYSIS side by side */}
         <div className="anim-subtitle grid gap-0 lg:grid-cols-2" style={{ marginTop: 64, borderTop: "1px solid var(--border-dim)" }}>
 
-          {/* FLOOR INTEREST */}
+          {/* FLOOR DEMAND */}
           <div style={{ padding: "32px 32px 32px 0", borderRight: "1px solid var(--border-dim)" }} className="floor-interest-col">
             <span className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.2em" }}>
-              FLOOR INTEREST
+              FLOOR DEMAND
             </span>
             {sortedFloors.length === 0 ? (
               <p className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", marginTop: 32, textAlign: "center" }}>
@@ -285,39 +320,26 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* VISITOR QUESTIONS */}
+          {/* AI ANALYSIS */}
           <div style={{ padding: "32px 0 32px 32px" }} className="questions-col">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.2em" }}>
-                VISITOR QUESTIONS
+                AI SUMMARY
               </span>
-              <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: "var(--cyan-dim)", color: "var(--cyan-light)" }}>
-                {data.userMessages.length}
+              <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: "var(--amber-dim)", color: "var(--amber-light)" }}>
+                AUTO
               </span>
             </div>
-            <div style={{ marginTop: 24, maxHeight: 420, overflowY: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
-              {data.userMessages.length === 0 ? (
-                <p className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", marginTop: 32, textAlign: "center" }}>
-                  NO QUESTIONS YET
+            <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+              {data.summaries.length === 0 ? (
+                <p className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", marginTop: 16, textAlign: "center" }}>
+                  NO SUMMARIES YET
                 </p>
               ) : (
-                data.userMessages.map((msg, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      padding: "12px 16px",
-                      borderRadius: 8,
-                      border: "1px solid var(--border-dim)",
-                      background: "var(--surface-0)",
-                      fontSize: 13,
-                      lineHeight: 1.6,
-                      color: "var(--text-2)",
-                      transition: "border-color 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--border-mid)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border-dim)"; }}
-                  >
-                    <span style={{ color: "var(--cyan-light)", marginRight: 8 }}>&rsaquo;</span>{msg}
+                data.summaries.map((s, i) => (
+                  <div key={i} style={{ display: "flex", gap: 12 }}>
+                    <div style={{ width: 3, flexShrink: 0, alignSelf: "stretch", borderRadius: 2, background: "linear-gradient(180deg, var(--violet), var(--cyan), transparent)" }} />
+                    <p className="font-[var(--font-ui)]" style={{ fontSize: 13, lineHeight: 1.8, color: "var(--text-2)" }}>{s}</p>
                   </div>
                 ))
               )}
@@ -325,11 +347,11 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* CONVERSATION FEED */}
+        {/* CONVERSATION LOG — collapsed, expandable */}
         <section className="anim-speak" style={{ marginTop: 64 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
             <span className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.2em" }}>
-              CONVERSATION FEED
+              SESSION LOG
             </span>
             <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: "var(--emerald-dim)", color: "var(--emerald-light)" }}>
               {data.timeline.length} SESSIONS
@@ -337,53 +359,62 @@ export default function Dashboard() {
           </div>
           <div style={{ height: 1, background: "var(--border-dim)", marginBottom: 24 }} />
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
             {data.timeline.length === 0 ? (
-              <div style={{ padding: "64px 0", textAlign: "center" }}>
-                <p className="font-[var(--font-ui)]" style={{ fontSize: 14, color: "var(--text-3)" }}>No conversations yet</p>
-                <p className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", marginTop: 8, letterSpacing: "0.1em" }}>WAITING FOR VISITORS</p>
+              <div style={{ padding: "48px 0", textAlign: "center" }}>
+                <p className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.1em" }}>WAITING FOR CONVERSATIONS</p>
               </div>
             ) : (
               data.timeline.map((conv) => (
-                <div
-                  key={conv.id}
-                  className="conv-item"
-                  onClick={() => setSelectedConv(selectedConv === conv.id ? null : conv.id)}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ width: 8, height: 8, borderRadius: "50%", background: "linear-gradient(135deg, var(--violet), var(--cyan))" }} />
-                      <span className="font-[var(--font-mono)]" style={{ fontSize: 12, fontWeight: 700, color: "var(--text-1)" }}>
-                        {formatTime(conv.time)}
-                      </span>
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: "var(--violet-dim)", color: "var(--violet-light)" }}>
+                <div key={conv.id}>
+                  <div
+                    onClick={() => setSelectedConv(selectedConv === conv.id ? null : conv.id)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 12, padding: "14px 16px",
+                      borderRadius: 6, cursor: "pointer", transition: "background 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "var(--surface-0)"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: "linear-gradient(135deg, var(--violet), var(--cyan))", flexShrink: 0 }} />
+                    <span className="font-[var(--font-mono)]" style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", minWidth: 72 }}>
+                      {formatTime(conv.time)}
+                    </span>
+                    <span className="font-[var(--font-ui)]" style={{ fontSize: 13, color: "var(--text-2)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {conv.summary.length > 100 ? conv.summary.slice(0, 100) + "..." : conv.summary}
+                    </span>
+                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                      <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.1em", color: "var(--text-4)" }}>
                         {formatDuration(conv.duration)}
                       </span>
-                      <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.14em", borderRadius: 4, padding: "3px 8px", background: "var(--cyan-dim)", color: "var(--cyan-light)" }}>
-                        {conv.messageCount} MSGS
+                      <span className="font-[var(--font-mono)]" style={{ fontSize: 9, letterSpacing: "0.1em", color: "var(--text-4)" }}>
+                        {conv.messageCount} msgs
                       </span>
                     </div>
+                    <span style={{ color: "var(--text-4)", fontSize: 12, transition: "transform 0.2s ease", transform: selectedConv === conv.id ? "rotate(90deg)" : "rotate(0)" }}>▸</span>
                   </div>
-                  <p className="font-[var(--font-ui)]" style={{ fontSize: 14, lineHeight: 1.8, color: "var(--text-2)" }}>
-                    {conv.summary}
-                  </p>
                   <AnimatePresence>
-                    {selectedConv === conv.id && conv.userQuestions.length > 0 && (
+                    {selectedConv === conv.id && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3 }}
+                        transition={{ duration: 0.25 }}
                         className="overflow-hidden"
                       >
-                        <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border-dim)", display: "flex", flexWrap: "wrap", gap: 8 }}>
-                          {conv.userQuestions.map((q, i) => (
-                            <span key={i} style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border-dim)", background: "var(--surface-1)", fontSize: 12, lineHeight: 1.5, color: "var(--text-2)" }}>
-                              {q.length > 70 ? q.slice(0, 70) + "..." : q}
-                            </span>
-                          ))}
+                        <div style={{ padding: "8px 16px 16px 34px" }}>
+                          <p className="font-[var(--font-ui)]" style={{ fontSize: 13, lineHeight: 1.8, color: "var(--text-2)", marginBottom: 12 }}>
+                            {conv.summary}
+                          </p>
+                          {conv.userQuestions.length > 0 && (
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, borderTop: "1px solid var(--border-dim)", paddingTop: 12 }}>
+                              {conv.userQuestions.map((q, i) => (
+                                <div key={i} style={{ fontSize: 12, lineHeight: 1.5, color: "var(--text-3)" }}>
+                                  <span style={{ color: "var(--violet-light)", marginRight: 8 }}>&rsaquo;</span>{q}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </motion.div>
                     )}
@@ -396,19 +427,10 @@ export default function Dashboard() {
       </main>
 
       {/* FOOTER */}
-      <footer
-        className="w-full max-w-[920px] mx-auto"
-        style={{
-          marginTop: 64,
-          borderTop: "1px solid var(--border-dim)",
-          padding: "28px 20px 64px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
+      <footer className="w-full max-w-[920px] mx-auto" style={{
+        marginTop: 64, borderTop: "1px solid var(--border-dim)", padding: "28px 20px 64px",
+        display: "flex", justifyContent: "space-between", alignItems: "center", position: "relative", zIndex: 1,
+      }}>
         <span className="font-[var(--font-mono)]" style={{ fontSize: 11, color: "var(--text-4)", letterSpacing: "0.18em" }}>
           <span style={{ animation: "pulse-dot 2.4s ease-in-out infinite", display: "inline-block", color: "var(--emerald-light)", marginRight: 8 }}>●</span>
           TOWERMIND INSIGHTS
